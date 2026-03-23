@@ -322,48 +322,53 @@ const LISTINGS = [
    LISTINGS STORE — host edits persist to localStorage
 ============================================= */
 const LISTINGS_STORE = (() => {
-  // Always start from hardcoded LISTINGS — host edits override on top via localStorage
+  const LS_KEY = "staybnb_listings";
+
   const loadData = () => {
     try {
-      const saved = localStorage.getItem("staybnb_listings");
+      const saved = localStorage.getItem(LS_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        const savedMap = new Map(parsed.map(l => [l._id, l]));
-        // Only use saved data if it's for the same listing IDs (prevents stale data)
-        const currentIds = new Set(LISTINGS.map(l => l._id));
-        const validSaved = parsed.filter(l => currentIds.has(l._id));
-        if (validSaved.length === LISTINGS.length) {
-          return LISTINGS.map(l => savedMap.has(l._id) ? savedMap.get(l._id) : { ...l });
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const savedMap = new Map(parsed.map(l => [l._id, l]));
+          const hardcodedIds = new Set(LISTINGS.map(l => l._id));
+          const hardcoded = LISTINGS.map(l => savedMap.has(l._id) ? savedMap.get(l._id) : { ...l });
+          const hostAdded = parsed.filter(l => !hardcodedIds.has(l._id));
+          return [...hostAdded, ...hardcoded];
         }
-        // If mismatch (fresh data hardcoded), clear old cache and use new
-        localStorage.removeItem("staybnb_listings");
       }
     } catch(e) {}
     return LISTINGS.map(l => ({ ...l }));
   };
 
   const saveData = (data) => {
-    try {
-      localStorage.setItem("staybnb_listings", JSON.stringify(data));
-    } catch(e) {}
+    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
   };
 
   return {
     _data: loadData(),
     _listeners: [],
     getAll() { return this._data; },
+    add(listing) {
+      this._data.unshift(listing);
+      saveData(this._data);
+      this._listeners.forEach(fn => fn([...this._data]));
+    },
+    delete(id) {
+      this._data = this._data.filter(l => l._id !== id);
+      saveData(this._data);
+      this._listeners.forEach(fn => fn([...this._data]));
+    },
     update(updated) {
       const idx = this._data.findIndex(l => l._id === updated._id);
       if (idx > -1) {
         this._data[idx] = updated;
         saveData(this._data);
-        console.log(`✅ Listing saved: "${updated.title}" | Images: ${updated.images?.length} | localStorage updated`);
         this._listeners.forEach(fn => fn([...this._data]));
       }
     },
     reset() {
-      // Clear saved edits and reload originals
-      try { localStorage.removeItem("staybnb_listings"); } catch(e) {}
+      try { localStorage.removeItem(LS_KEY); } catch(e) {}
       this._data = LISTINGS.map(l => ({ ...l }));
       this._listeners.forEach(fn => fn([...this._data]));
     },
@@ -1260,7 +1265,7 @@ function ListingEditModal({ listing, onSave, onClose }) {
 /* =============================================
    LISTING CARD
 ============================================= */
-function Card({ l, delay=0, onClick, isHost=false, onEdit }) {
+function Card({ l, delay=0, onClick, isHost=false, onEdit, onDelete }) {
   const [liked, setLiked] = useState(false);
   const [img, setImg] = useState(0);
   const fb = "https://picsum.photos/seed/9991f1c4c750/600/800";
@@ -1311,16 +1316,24 @@ function Card({ l, delay=0, onClick, isHost=false, onEdit }) {
         <span style={{position:"absolute",top:12,left:12,background:"rgba(255,255,255,.92)",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,backdropFilter:"blur(4px)"}}>{l.type}</span>
         {l.host.superhost&&<span style={{position:"absolute",top:38,left:12,background:"linear-gradient(135deg,#FF385C,#ff6b35)",color:"#fff",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700}}>⭐ Superhost</span>}
 
-        {/* Host edit button */}
+        {/* Host edit + delete buttons */}
         {isHost && onEdit && (
-          <button
-            onClick={e=>{e.stopPropagation();onEdit(l);}}
-            style={{position:"absolute",bottom:12,right:12,background:"linear-gradient(135deg,#FF385C,#ff6b35)",color:"#fff",border:"none",borderRadius:10,padding:"6px 13px",fontSize:11,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:5,boxShadow:"0 3px 12px rgba(255,56,92,.45)",fontFamily:"'Sora',sans-serif",zIndex:2,transition:"transform .15s"}}
-            onMouseEnter={e=>e.currentTarget.style.transform="scale(1.07)"}
-            onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
-          >
-            ✏️ Edit
-          </button>
+          <div style={{position:"absolute",bottom:12,right:12,display:"flex",gap:6,zIndex:2}}>
+            <button
+              onClick={e=>{e.stopPropagation();onEdit(l);}}
+              style={{background:"linear-gradient(135deg,#FF385C,#ff6b35)",color:"#fff",border:"none",borderRadius:10,padding:"6px 13px",fontSize:11,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:5,boxShadow:"0 3px 12px rgba(255,56,92,.45)",fontFamily:"'Sora',sans-serif",transition:"transform .15s"}}
+              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.07)"}
+              onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+            >✏️ Edit</button>
+            {onDelete && (
+              <button
+                onClick={e=>{e.stopPropagation();onDelete(l);}}
+                style={{background:"rgba(220,38,38,.88)",color:"#fff",border:"none",borderRadius:10,padding:"6px 11px",fontSize:11,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",gap:4,boxShadow:"0 3px 12px rgba(220,38,38,.4)",fontFamily:"'Sora',sans-serif",transition:"transform .15s"}}
+                onMouseEnter={e=>e.currentTarget.style.transform="scale(1.07)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+              >🗑️</button>
+            )}
+          </div>
         )}
       </div>
       <div style={{padding:"14px 4px 8px"}}>
@@ -3253,7 +3266,8 @@ function Auth({ setPage }) {
     setGeneratedOtp(otp);
     setPendingUser({ name:custName.trim(), email:emailLC, password:custPass, role:"customer",
       avatar:`https://ui-avatars.com/api/?name=${encodeURIComponent(custName.trim())}&background=FF385C&color=fff&bold=true`,
-      joinedAt: new Date().toLocaleDateString("en-IN",{month:"long",year:"numeric"}) });
+      joinedAt: new Date().toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"}),
+      joinedTime: new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",hour12:true}) });
     setEmailSent(false);
     setVerifyStep(true);
     setOtpCode("");
@@ -3613,11 +3627,43 @@ function NewListing({ setPage }) {
   const [done,setDone] = useState(false);
   const amen = ["WiFi","Pool","AC","Kitchen","Parking","Breakfast","Fireplace","Balcony","Gym","Garden","Workspace","Rooftop"];
   if(!user) return <div style={{textAlign:"center",padding:"80px"}}><div style={{fontSize:52,marginBottom:16}}>🔒</div><h2 style={{fontFamily:"'Playfair Display',serif",fontSize:28,marginBottom:16}}>Sign in to list your space</h2><button className="btn r" onClick={()=>setPage("login")}>Sign In</button></div>;
-  if(done) return <div style={{maxWidth:500,margin:"80px auto",textAlign:"center",padding:"40px 32px"}} className="fu"><div style={{fontSize:64,marginBottom:20}}>🎉</div><h2 style={{fontFamily:"'Playfair Display',serif",fontSize:32,marginBottom:10}}>You're live!</h2><p style={{color:"var(--gray)",marginBottom:28}}><b>{form.title}</b> is now on StayBnb</p><button className="btn r" style={{width:"100%"}} onClick={()=>setPage("home")}>View All Listings</button></div>;
+  if(done) return <div style={{maxWidth:500,margin:"80px auto",textAlign:"center",padding:"40px 32px"}} className="fu"><div style={{fontSize:64,marginBottom:20}}>🎉</div><h2 style={{fontFamily:"'Playfair Display',serif",fontSize:32,marginBottom:10}}>You're live!</h2><p style={{color:"var(--gray)",marginBottom:28}}><b>{form.title}</b> is now published on StayBnb and visible to all customers.</p><div style={{display:"flex",flexDirection:"column",gap:12}}><button className="btn r" style={{width:"100%"}} onClick={()=>setPage("dashboard")}>Go to Dashboard 📊</button><button className="btn gh" style={{width:"100%"}} onClick={()=>setPage("home")}>View All Listings</button></div></div>;
   const submit = async()=>{
     if(!form.title||!form.location||!form.price){alert("Fill required fields");return;}
     setLoading(true);
     await new Promise(r=>setTimeout(r,1200));
+
+    // ── Build a full listing object and save it to LISTINGS_STORE ──
+    const typeImages = {
+      Apartment:["https://picsum.photos/seed/apt1/800/600","https://picsum.photos/seed/apt2/800/600","https://picsum.photos/seed/apt3/800/600"],
+      Villa:["https://picsum.photos/seed/vil1/800/600","https://picsum.photos/seed/vil2/800/600","https://picsum.photos/seed/vil3/800/600"],
+      Cabin:["https://picsum.photos/seed/cab1/800/600","https://picsum.photos/seed/cab2/800/600","https://picsum.photos/seed/cab3/800/600"],
+      Heritage:["https://picsum.photos/seed/her1/800/600","https://picsum.photos/seed/her2/800/600","https://picsum.photos/seed/her3/800/600"],
+      Houseboat:["https://picsum.photos/seed/hb1/800/600","https://picsum.photos/seed/hb2/800/600","https://picsum.photos/seed/hb3/800/600"],
+      Glamping:["https://picsum.photos/seed/gl1/800/600","https://picsum.photos/seed/gl2/800/600","https://picsum.photos/seed/gl3/800/600"],
+    };
+    const newListing = {
+      _id: "host_" + Date.now(),
+      title: form.title,
+      location: form.location,
+      dest: form.location.split(",")[0].trim(),
+      lat: 20.5937 + (Math.random()-0.5)*10,
+      lng: 78.9629 + (Math.random()-0.5)*10,
+      price: Number(form.price),
+      rating: 4.8,
+      reviews: 0,
+      type: form.type,
+      images: (form.photos||[]).filter(Boolean).length>0 ? (form.photos||[]).filter(Boolean) : typeImages[form.type] || typeImages.Apartment,
+      amenities: form.amenities.length > 0 ? form.amenities : ["WiFi","AC"],
+      maxGuests: Number(form.maxGuests)||2,
+      bedrooms: Number(form.bedrooms)||1,
+      bathrooms: Number(form.bathrooms)||1,
+      host: { name: user.name, avatar: user.avatar, joined: new Date().getFullYear().toString(), superhost: false },
+      description: form.desc || `${form.type} in ${form.location}. A wonderful place to stay.`,
+      nearby: [],
+      hostAdded: true,
+    };
+    LISTINGS_STORE.add(newListing);
 
     // ── Notify ALL registered customers about new listing ──
     const allCustomers = CUSTOMERS_DB.getAll();
@@ -3642,7 +3688,30 @@ function NewListing({ setPage }) {
       <div style={{display:"flex",gap:8,marginBottom:36}}>{steps.map((s,i)=><div key={s} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}><div style={{width:"100%",height:4,borderRadius:4,background:i+1<=step?"var(--red)":"var(--lg)",transition:"background .3s"}}/><span style={{fontSize:10,fontWeight:700,color:i+1===step?"var(--red)":"var(--gray)",textAlign:"center"}}>{s}</span></div>)}</div>
       <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:30,marginBottom:28}}>{steps[step-1]}</h1>
       {step===1&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>{Object.keys(te).map(t=><button key={t} onClick={()=>setForm(v=>({...v,type:t}))} style={{padding:"22px 18px",border:`2px solid ${form.type===t?"var(--dark)":"var(--lg)"}`,background:form.type===t?"var(--bg)":"#fff",borderRadius:16,cursor:"pointer",fontWeight:700,fontSize:15,textAlign:"left",transition:"all .15s",fontFamily:"'Sora',sans-serif"}}><div style={{fontSize:30,marginBottom:8}}>{te[t]}</div>{t}</button>)}</div>}
-      {step===2&&<div style={{display:"flex",flexDirection:"column",gap:18}}><div><label style={{display:"block",fontWeight:700,marginBottom:6}}>Title *</label><input style={fi} placeholder="e.g. Cozy Beachfront Villa" value={form.title} onChange={e=>setForm(v=>({...v,title:e.target.value}))}/></div><div><label style={{display:"block",fontWeight:700,marginBottom:6}}>Location *</label><input style={fi} placeholder="City, State" value={form.location} onChange={e=>setForm(v=>({...v,location:e.target.value}))}/></div><div><label style={{display:"block",fontWeight:700,marginBottom:6}}>Description</label><textarea style={{...fi,minHeight:110,resize:"vertical"}} placeholder="Tell guests about your space…" value={form.desc} onChange={e=>setForm(v=>({...v,desc:e.target.value}))}/></div><div style={{border:"2px dashed var(--lg)",borderRadius:16,padding:28,textAlign:"center",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:10}}><I.Upload/><span style={{fontWeight:700,color:"var(--gray)"}}>Upload Photos</span><span style={{fontSize:13,color:"var(--gray)"}}>Connects to Cloudinary</span></div></div>}
+      {step===2&&<div style={{display:"flex",flexDirection:"column",gap:18}}>
+        <div><label style={{display:"block",fontWeight:700,marginBottom:6}}>Title *</label><input style={fi} placeholder="e.g. Cozy Beachfront Villa" value={form.title} onChange={e=>setForm(v=>({...v,title:e.target.value}))}/></div>
+        <div><label style={{display:"block",fontWeight:700,marginBottom:6}}>Location *</label><input style={fi} placeholder="City, State (e.g. Goa, Maharashtra)" value={form.location} onChange={e=>setForm(v=>({...v,location:e.target.value}))}/></div>
+        <div><label style={{display:"block",fontWeight:700,marginBottom:6}}>Description</label><textarea style={{...fi,minHeight:110,resize:"vertical"}} placeholder="Tell guests about your space..." value={form.desc} onChange={e=>setForm(v=>({...v,desc:e.target.value}))}/></div>
+        <div>
+          <label style={{display:"block",fontWeight:700,marginBottom:8}}>Photos <span style={{fontSize:12,fontWeight:500,color:"var(--gray)"}}>paste up to 3 image URLs (optional - defaults used if blank)</span></label>
+          {[0,1,2].map(pidx=>(
+            <div key={pidx} style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
+              {form.photos&&form.photos[pidx]?(
+                <img src={form.photos[pidx]} alt="" style={{width:52,height:40,objectFit:"cover",borderRadius:8,border:"1.5px solid var(--lg)",flexShrink:0}} onError={e=>{e.target.style.opacity=".25";}}/>
+              ):(
+                <div style={{width:52,height:40,borderRadius:8,background:"var(--bg)",border:"1.5px dashed var(--lg)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🖼️</div>
+              )}
+              <input
+                style={{...fi,flex:1,padding:"10px 13px"}}
+                placeholder={"Photo "+(pidx+1)+" URL (https://...)"}
+                value={(form.photos&&form.photos[pidx])||""}
+                onChange={e=>{const p=[...((form.photos)||["","",""])];p[pidx]=e.target.value;setForm(v=>({...v,photos:p}));}}
+              />
+            </div>
+          ))}
+          <div style={{fontSize:11,color:"var(--gray)",marginTop:2}}>💡 Tip: right-click any image on the web and choose "Copy image address", then paste here</div>
+        </div>
+      </div>}
       {step===3&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>{[["Price/Night (Rs.) *","price"],["Max Guests","maxGuests"],["Bedrooms","bedrooms"],["Bathrooms","bathrooms"]].map(([lbl,key])=><div key={key}><label style={{display:"block",fontWeight:700,marginBottom:6}}>{lbl}</label><input type="number" min={1} style={fi} value={form[key]} onChange={e=>setForm(v=>({...v,[key]:e.target.value}))}/></div>)}</div>}
       {step===4&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{amen.map(a=>{const on=form.amenities.includes(a);return(<button key={a} onClick={()=>setForm(v=>({...v,amenities:on?v.amenities.filter(x=>x!==a):[...v.amenities,a]}))} style={{padding:"13px 16px",border:`2px solid ${on?"var(--dark)":"var(--lg)"}`,background:on?"var(--bg)":"#fff",borderRadius:12,cursor:"pointer",display:"flex",alignItems:"center",gap:10,fontWeight:600,fontSize:13,transition:"all .15s",fontFamily:"'Sora',sans-serif"}}><span>{AICONS[a]||"✅"}</span>{a}{on&&<span style={{marginLeft:"auto",color:"var(--green)"}}>✓</span>}</button>);})}</div>}
       <div style={{display:"flex",gap:12,marginTop:36}}>
@@ -3896,6 +3965,7 @@ function Dashboard({ setPage, setL }) {
   const [cancelTarget, setCancelTarget] = useState(null);
   const [editTarget, setEditTarget] = useState(null);       // booking edit
   const [listingEditTarget, setListingEditTarget] = useState(null);
+  const [deleteListingTarget, setDeleteListingTarget] = useState(null);
   const [custCancelTarget, setCustCancelTarget] = useState(null);
   const [dashListings, setDashListings] = useState(() => LISTINGS_STORE.getAll());
   const [customers, setCustomers] = useState(() => CUSTOMERS_DB.getAll());
@@ -3919,6 +3989,15 @@ function Dashboard({ setPage, setL }) {
     };
   }, []);
   const handleListingEdit = (updated) => { LISTINGS_STORE.update(updated); setListingEditTarget(null); };
+  const handleListingDelete = (listing) => {
+    setDeleteListingTarget(listing);
+  };
+  const confirmListingDelete = () => {
+    if (!deleteListingTarget) return;
+    LISTINGS_STORE.delete(deleteListingTarget._id);
+    setDashListings(LISTINGS_STORE.getAll());
+    setDeleteListingTarget(null);
+  };
 
   if(!user) return <div style={{textAlign:"center",padding:"80px"}}><h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:16}}>Sign in required</h2><button className="btn r" onClick={()=>setPage("login")}>Sign In</button></div>;
 
@@ -4002,7 +4081,10 @@ function Dashboard({ setPage, setL }) {
                   <tr key={c.email}>
                     <td><div style={{display:"flex",alignItems:"center",gap:10}}><img src={c.avatar} alt={c.name} style={{width:36,height:36,borderRadius:"50%",objectFit:"cover"}}/><span style={{fontWeight:700}}>{c.name}</span></div></td>
                     <td style={{color:"var(--gray)"}}>{c.email}</td>
-                    <td style={{color:"var(--gray)"}}>{c.joinedAt||"Recently"}</td>
+                    <td style={{color:"var(--gray)"}}>
+                      <div style={{fontWeight:600,fontSize:13}}>{c.joinedAt||"Recently"}</div>
+                      {c.joinedTime && <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>🕐 {c.joinedTime}</div>}
+                    </td>
                     <td><span className="badge bg">Active</span></td>
                     <td>
                       <button
@@ -4099,13 +4181,27 @@ function Dashboard({ setPage, setL }) {
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:24}}>
           {dashListings.slice(0,6).map((l,i)=>(
-            <Card key={l._id} l={l} delay={i} onClick={()=>{setL(l);setPage("detail");}} isHost={true} onEdit={(listing)=>setListingEditTarget(listing)}/>
+            <Card key={l._id} l={l} delay={i} onClick={()=>{setL(l);setPage("detail");}} isHost={true} onEdit={(listing)=>setListingEditTarget(listing)} onDelete={handleListingDelete}/>
           ))}
         </div>
 
         {cancelTarget && <CancelModal booking={cancelTarget} isHost={true} onConfirm={doCancel} onClose={()=>setCancelTarget(null)}/>}
         {editTarget   && <BookingEditModal booking={editTarget} onSave={doEdit} onClose={()=>setEditTarget(null)}/>}
         {listingEditTarget && <ListingEditModal listing={listingEditTarget} onSave={handleListingEdit} onClose={()=>setListingEditTarget(null)}/>}
+        {deleteListingTarget && (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={()=>setDeleteListingTarget(null)}>
+            <div style={{background:"#fff",borderRadius:24,width:"100%",maxWidth:400,padding:"32px 28px",boxShadow:"0 24px 80px rgba(0,0,0,.25)",textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:52,marginBottom:14}}>🗑️</div>
+              <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:22,marginBottom:8}}>Delete Listing?</h3>
+              <p style={{color:"var(--gray)",fontSize:14,marginBottom:6,fontWeight:600}}>{deleteListingTarget.title}</p>
+              <p style={{color:"var(--gray)",fontSize:13,marginBottom:24}}>This will permanently remove this property from StayBnb. This cannot be undone.</p>
+              <div style={{display:"flex",gap:12}}>
+                <button onClick={()=>setDeleteListingTarget(null)} style={{flex:1,padding:"13px",borderRadius:12,border:"1.5px solid var(--lg)",background:"#f8f8f8",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'Sora',sans-serif"}}>Cancel</button>
+                <button onClick={confirmListingDelete} style={{flex:1,padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#ef4444,#dc2626)",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"'Sora',sans-serif",boxShadow:"0 4px 14px rgba(239,68,68,.4)"}}>🗑️ Delete</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
