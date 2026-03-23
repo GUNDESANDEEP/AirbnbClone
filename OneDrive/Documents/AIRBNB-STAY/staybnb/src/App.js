@@ -28,30 +28,24 @@ const CUSTOMER_BOOKINGS = new Map();
 ============================================= */
 const CUSTOMERS_DB = (() => {
   const LS_KEY = "staybnb_customers";
-  const load = () => {
-    try {
-      const saved = localStorage.getItem(LS_KEY);
-      if (saved) return new Map(JSON.parse(saved));
-    } catch(e) {}
-    return new Map();
-  };
-  const persist = (map) => {
-    try { localStorage.setItem(LS_KEY, JSON.stringify([...map])); } catch(e) {}
-  };
-  const _map = load();
+
+  const readLS  = () => { try { const s=localStorage.getItem(LS_KEY); return s ? new Map(JSON.parse(s)) : new Map(); } catch(e){ return new Map(); } };
+  const writeLS = (map) => { try { localStorage.setItem(LS_KEY, JSON.stringify([...map])); } catch(e){} };
+
   const _listeners = [];
-  const notify = () => _listeners.forEach(fn => fn(Array.from(_map.values())));
+  const notify = () => _listeners.forEach(fn => fn(Array.from(readLS().values())));
+
   return {
-    has: (k) => _map.has(k),
-    get: (k) => _map.get(k),
-    set: (k, v) => { _map.set(k, v); persist(_map); notify(); return _map; },
-    delete: (k) => { _map.delete(k); persist(_map); notify(); },
-    values: () => _map.values(),
-    getAll: () => Array.from(_map.values()),
-    get size() { return _map.size; },
+    has:    (k) => readLS().has(k),
+    get:    (k) => readLS().get(k),
+    set:    (k, v) => { const m=readLS(); m.set(k,v); writeLS(m); notify(); return m; },
+    delete: (k) => { const m=readLS(); m.delete(k); writeLS(m); notify(); },
+    values: () => readLS().values(),
+    getAll: () => Array.from(readLS().values()),
+    get size() { return readLS().size; },
     subscribe: (fn) => {
       _listeners.push(fn);
-      return () => { const i = _listeners.indexOf(fn); if(i>-1) _listeners.splice(i,1); };
+      return () => { const i=_listeners.indexOf(fn); if(i>-1) _listeners.splice(i,1); };
     },
   };
 })();
@@ -393,19 +387,14 @@ const BOOKINGS_DATA = [
 ============================================= */
 const BOOKINGS_STORE = (() => {
   const LS_KEY = "staybnb_bookings";
-  const load = () => { try { const s=localStorage.getItem(LS_KEY); if(s) return JSON.parse(s); } catch(e){} return []; };
-  const persist = (data) => { try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e){} };
-  const _data = load();
+  const readLS  = () => { try { const s=localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : []; } catch(e){ return []; } };
+  const writeLS = (data) => { try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e){} };
   return {
-    _data,
-    add(booking) { this._data.unshift(booking); persist(this._data); },
-    getAll() { return this._data; },
-    getByEmail(email) { return this._data.filter(b => b.customerEmail === email); },
-    update(updated) {
-      const idx = this._data.findIndex(b=>b._id===updated._id);
-      if(idx>-1){ this._data[idx]=updated; persist(this._data); }
-    },
-    remove(id) { const i=this._data.findIndex(b=>b._id===id); if(i>-1){this._data.splice(i,1); persist(this._data);} },
+    add(booking)   { const d=readLS(); d.unshift(booking); writeLS(d); },
+    getAll()       { return readLS(); },
+    getByEmail(email) { return readLS().filter(b=>b.customerEmail===email); },
+    update(updated){ const d=readLS(); const i=d.findIndex(b=>b._id===updated._id); if(i>-1){d[i]=updated; writeLS(d);} },
+    remove(id)     { const d=readLS().filter(b=>b._id!==id); writeLS(d); },
   };
 })();
 /* =============================================
@@ -1807,7 +1796,7 @@ function Detail({ l: _l, setPage }) {
               </div>
               <div style={{padding:"13px 16px"}}><div style={{fontSize:10,fontWeight:800,letterSpacing:".07em",marginBottom:4}}>GUESTS</div><select value={guests} onChange={e=>setGuests(Number(e.target.value))} style={{border:"none",fontSize:14,fontWeight:600,background:"transparent",width:"100%"}}>{Array.from({length:l.maxGuests},(_,i)=><option key={i+1} value={i+1}>{i+1} guest{i>0?"s":""}</option>)}</select></div>
             </div>
-            <button className="btn r" style={{width:"100%",fontSize:16,padding:16,borderRadius:14,marginBottom:14,opacity:booking ? 0.7 : 1}} onClick={book} disabled={booking}>{booking?"Confirming…":user?"Reserve":"Sign in to Reserve"}</button>
+            <button className="btn r" style={{width:"100%",fontSize:16,padding:16,borderRadius:14,marginBottom:14,opacity:booking?.7:1}} onClick={book} disabled={booking}>{booking?"Confirming…":user?"Reserve":"Sign in to Reserve"}</button>
             <p style={{textAlign:"center",color:"var(--gray)",fontSize:13,marginBottom:nights>0?16:0}}>You won't be charged yet</p>
             {nights>0&&(<div className="fu"><div style={{display:"flex",justifyContent:"space-between",fontSize:14,color:"var(--gray)",marginBottom:8}}><u>Rs.{l.price.toLocaleString()} x {nights} nights</u><span>Rs.{sub.toLocaleString()}</span></div><div style={{display:"flex",justifyContent:"space-between",fontSize:14,color:"var(--gray)",marginBottom:14}}><u>Service fee</u><span>Rs.{fee.toLocaleString()}</span></div><div style={{borderTop:"1px solid var(--lg)",paddingTop:14,display:"flex",justifyContent:"space-between",fontWeight:800,fontSize:16}}><span>Total</span><span>Rs.{total.toLocaleString()}</span></div></div>)}
             <div style={{marginTop:20,background:"var(--bg)",borderRadius:12,padding:"14px 16px",display:"flex",gap:10,alignItems:"flex-start",fontSize:13,color:"var(--gray)"}}><I.Shield/><span><b style={{color:"var(--dark)"}}>StayBnb Guarantee</b> — If something's wrong, we'll make it right.</span></div>
@@ -1956,7 +1945,7 @@ function ReviewsSection({ listingId, rating, totalReviews, user }) {
           </div>
           <textarea value={newText} onChange={e=>setNewText(e.target.value)} placeholder="Tell future guests about your stay — what made it special, any tips..." style={{width:"100%",minHeight:100,padding:"13px 16px",border:"1.5px solid var(--lg)",borderRadius:12,fontSize:14,resize:"vertical",fontFamily:"'Sora',sans-serif",outline:"none",lineHeight:1.6,marginBottom:14}}/>
           <div style={{display:"flex",gap:10}}>
-            <button className="btn r" onClick={submit} disabled={submitting} style={{padding:"10px 24px",fontSize:14,opacity:submitting ? 0.7 : 1,display:"flex",alignItems:"center",gap:8}}>
+            <button className="btn r" onClick={submit} disabled={submitting} style={{padding:"10px 24px",fontSize:14,opacity:submitting?.7:1,display:"flex",alignItems:"center",gap:8}}>
               {submitting&&<div style={{width:14,height:14,border:"2px solid rgba(255,255,255,.4)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>}
               {submitting?"Submitting…":"Submit Review"}
             </button>
@@ -3519,7 +3508,7 @@ function Auth({ setPage }) {
                   </div>
 
                   <button onClick={subStep==="login"?handleCustLogin:handleCustSignup} disabled={custLoading}
-                    style={{width:"100%",padding:"15px",borderRadius:12,background:"linear-gradient(135deg,#FF385C,#e0314f)",color:"#fff",border:"none",fontSize:16,fontWeight:700,cursor:custLoading?"not-allowed":"pointer",fontFamily:"'Sora',sans-serif",marginBottom:16,opacity:custLoading ? 0.7 : 1,display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"transform .2s"}}
+                    style={{width:"100%",padding:"15px",borderRadius:12,background:"linear-gradient(135deg,#FF385C,#e0314f)",color:"#fff",border:"none",fontSize:16,fontWeight:700,cursor:custLoading?"not-allowed":"pointer",fontFamily:"'Sora',sans-serif",marginBottom:16,opacity:custLoading?.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"transform .2s"}}
                     onMouseEnter={e=>{if(!custLoading)e.currentTarget.style.transform="translateY(-2px)";}}
                     onMouseLeave={e=>e.currentTarget.style.transform="none"}>
                     {custLoading&&<div style={{width:16,height:16,border:"2px solid rgba(255,255,255,.4)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>}
@@ -3652,7 +3641,7 @@ function NewListing({ setPage }) {
       {step===4&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{amen.map(a=>{const on=form.amenities.includes(a);return(<button key={a} onClick={()=>setForm(v=>({...v,amenities:on?v.amenities.filter(x=>x!==a):[...v.amenities,a]}))} style={{padding:"13px 16px",border:`2px solid ${on?"var(--dark)":"var(--lg)"}`,background:on?"var(--bg)":"#fff",borderRadius:12,cursor:"pointer",display:"flex",alignItems:"center",gap:10,fontWeight:600,fontSize:13,transition:"all .15s",fontFamily:"'Sora',sans-serif"}}><span>{AICONS[a]||"✅"}</span>{a}{on&&<span style={{marginLeft:"auto",color:"var(--green)"}}>✓</span>}</button>);})}</div>}
       <div style={{display:"flex",gap:12,marginTop:36}}>
         {step>1&&<button className="btn gh" onClick={()=>setStep(s=>s-1)} style={{flex:1}}>Back</button>}
-        {step<4?<button className="btn r" onClick={()=>setStep(s=>s+1)} style={{flex:2}}>Continue →</button>:<button className="btn r" onClick={submit} disabled={loading} style={{flex:2,opacity:loading ? 0.7 : 1}}>{loading?"Publishing…":"Publish 🚀"}</button>}
+        {step<4?<button className="btn r" onClick={()=>setStep(s=>s+1)} style={{flex:2}}>Continue →</button>:<button className="btn r" onClick={submit} disabled={loading} style={{flex:2,opacity:loading?.7:1}}>{loading?"Publishing…":"Publish 🚀"}</button>}
       </div>
     </div>
   );
@@ -3908,6 +3897,21 @@ function Dashboard({ setPage, setL }) {
   const [customerTick, setCustomerTick] = useState(0);
   useEffect(() => LISTINGS_STORE.subscribe(data => setDashListings([...data])), []);
   useEffect(() => CUSTOMERS_DB.subscribe(data => setCustomers([...data])), []);
+
+  // Always refresh from localStorage on mount and on window focus
+  useEffect(() => {
+    const refresh = () => {
+      setCustomers(CUSTOMERS_DB.getAll());
+      setBookings(BOOKINGS_STORE.getAll());
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
   const handleListingEdit = (updated) => { LISTINGS_STORE.update(updated); setListingEditTarget(null); };
 
   if(!user) return <div style={{textAlign:"center",padding:"80px"}}><h2 style={{fontFamily:"'Playfair Display',serif",fontSize:26,marginBottom:16}}>Sign in required</h2><button className="btn r" onClick={()=>setPage("login")}>Sign In</button></div>;
@@ -3971,7 +3975,12 @@ function Dashboard({ setPage, setL }) {
         </div>
 
         {/* Registered Customers */}
-        <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24,marginBottom:16}}>👥 Registered Customers</h2>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:24}}>👥 Registered Customers</h2>
+          <button onClick={()=>setCustomers(CUSTOMERS_DB.getAll())} style={{padding:"7px 16px",borderRadius:10,border:"1.5px solid var(--lg)",background:"#f8f8f8",color:"var(--dark)",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"'Sora',sans-serif",display:"flex",alignItems:"center",gap:6}} onMouseEnter={e=>{e.currentTarget.style.background="var(--dark)";e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background="#f8f8f8";e.currentTarget.style.color="var(--dark)";}}>
+            🔄 Refresh
+          </button>
+        </div>
         <div style={{background:"#fff",borderRadius:20,border:"1.5px solid var(--lg)",overflow:"hidden",marginBottom:44,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
           {customers.length===0 ? (
             <div style={{padding:"40px",textAlign:"center",color:"var(--gray)"}}>
