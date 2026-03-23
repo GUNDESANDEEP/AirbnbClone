@@ -2062,7 +2062,11 @@ function ProfilePage({ setPage }) {
   );
 
   const save = () => {
-    login({ ...user, name:form.name, email:form.email });
+    const updated = { ...user, name:form.name, email:form.email };
+    login(updated);
+    if (user.role === "customer") {
+      CUSTOMERS_DB.set(user.email, { ...CUSTOMERS_DB.get(user.email), name:form.name, email:form.email });
+    }
     setEditing(false); setSaved(true);
     setTimeout(()=>setSaved(false),2500);
   };
@@ -2070,6 +2074,9 @@ function ProfilePage({ setPage }) {
   const applyAvatar = () => {
     if(!avatarPreview) return;
     login({ ...user, avatar: avatarPreview });
+    if (user.role === "customer") {
+      CUSTOMERS_DB.set(user.email, { ...CUSTOMERS_DB.get(user.email), avatar: avatarPreview });
+    }
     setAvatarModal(false);
     setSaved(true);
     setTimeout(()=>setSaved(false),2500);
@@ -2956,7 +2963,6 @@ async function sendOtpEmail(toEmail, toName, otpCode) {
     EMAILJS_SERVICE_ID,
     EMAILJS_TEMPLATE_ID,
     { to_email: toEmail, to_name: toName, otp_code: otpCode, from_name: "StayBnb" },
-    { publicKey: EMAILJS_PUBLIC_KEY }
   );
   if (result.status !== 200) throw new Error(result.text);
   return true;
@@ -3948,7 +3954,7 @@ function Dashboard({ setPage, setL }) {
       ["📅", allBookings.length, "Total Bookings","#3b82f6"],
       ["🏠", dashListings.length,"Active Listings","var(--green)"],
       ["💰", totalEarned>0?`Rs.${Math.round(totalEarned/1000)}K`:"Rs.0","Total Earned","var(--red)"],
-      ["👥", customers.length,"Registered Customers","#f59e0b"],
+      ["👥", CUSTOMERS_DB.size,"Registered Customers","#f59e0b"],
     ];
     return (
       <div style={{maxWidth:1200,margin:"0 auto",padding:"40px 36px"}} className="fu">
@@ -4003,6 +4009,7 @@ function Dashboard({ setPage, setL }) {
                         onClick={()=>{
                           if(window.confirm(`Remove ${c.name} (${c.email}) from StayBnb? They will need to re-register.`)){
                             CUSTOMERS_DB.delete(c.email);
+                            setCustomers(CUSTOMERS_DB.getAll());
                           }
                         }}
                         style={{padding:"5px 12px",borderRadius:8,border:"1.5px solid #fca5a5",background:"#fff5f5",color:"#dc2626",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all .15s"}}
